@@ -22,6 +22,10 @@ def import_vdp(source: Path):
     for header in source.glob("*.h"):
         shutil.copyfile(header, Path("include") / header.name)
 
+    """
+    2023.10.01 - Need to manually add envelopes/*.h data files
+    """
+
     with open(source / "video.ino") as input, open("src/main.cpp", "w") as output:
          for line in input:
             if line.startswith("#define VERSION"):
