@@ -6,7 +6,7 @@
 //					Igor Chaves Cananea (vdp-gl maintenance)
 //					Steve Sims (Audio enhancements, refactoring, bug fixes)
 // Created:			22/03/2022
-// Last Updated:	12/09/2023
+// Last Updated:	11/11/2023
 //
 // Modinfo:
 // 11/07/2022:		Baud rate tweaked for Agon Light, HW Flow Control temporarily commented out
@@ -43,6 +43,7 @@
 // 13/08/2023:				RC2	+ New video modes, mode change resets page mode
 // 05/09/2023:					+ New audio enhancements, improved mode change code
 // 12/09/2023:					+ Refactored
+// 11/11/2023:				RC3 + See Github for full list of changes
 
 #include <WiFi.h>
 #include <HardwareSerial.h>
@@ -51,14 +52,18 @@
 #include "arduino_compat.h"
 #define VERSION			1
 #define REVISION		4
-#define RC				2
+#define RC				0
 
 #define	DEBUG			0						// Serial Debug Mode: 1 = enable
-#define SERIALKB		0						// Serial Keyboard: 1 = enable (Experimental)
 #define SERIALBAUDRATE	115200
 
+HardwareSerial	DBGSerial(0);
+
+bool			terminalMode = false;			// Terminal mode (for CP/M)
+bool			consoleMode = false;			// Serial console mode (0 = off, 1 = console enabled)
+
 #include "agon.h"								// Configuration file
-#include "agon_ps2.h"						// Keyboard support
+#include "agon_ps2.h"							// Keyboard support
 #include "agon_audio.h"							// Audio support
 #include "agon_ttxt.h"
 #include "graphics.h"							// Graphics support
@@ -67,11 +72,10 @@
 #include "vdu_stream_processor.h"
 #include "hexload.h"
 
-bool					terminalMode = false;	// Terminal mode
 fabgl::Terminal			Terminal;				// Used for CP/M mode
 VDUStreamProcessor *	processor;				// VDU Stream Processor
 
-HardwareSerial DBGSerial(0);
+#include "zdi.h"								// ZDI debugging console
 
 void setup() {
 	disableCore0WDT(); delay(200);				// Disable the watchdog timers
@@ -203,6 +207,14 @@ void debug_log(const char *format, ...) {
 	}
 	va_end(ap);
 	#endif
+}
+
+// Set console mode
+// Parameters:
+// - mode: 0 = off, 1 = on
+//
+void setConsoleMode(bool mode) {
+	consoleMode = mode;
 }
 
 // Switch to terminal mode
