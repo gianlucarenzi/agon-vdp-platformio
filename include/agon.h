@@ -15,9 +15,6 @@
 
 #pragma once
 
-#define VDP_RETROBIT_LAB
-//#undef VDP_RETROBIT_LAB
-
 #define EPOCH_YEAR				1980	// 1-byte dates are offset from this (for FatFS)
 #define MAX_SPRITES				256		// Maximum number of sprites
 #define MAX_BITMAPS				256		// Maximum number of bitmaps
@@ -28,15 +25,6 @@
 #define UART_RX					34
 #define UART_RTS				13		// The ESP32 RTS pin (eZ80 CTS)
 #define UART_CTS	 			14		// The ESP32 CTS pin (eZ80 RTS)
-
-#ifdef VDP_RETROBIT_LAB
-	#undef UART_BR
-	#undef UART_TX
-	#undef UART_RX
-	#define UART_BR					57600	// Atari POKEY should do that
-	#define UART_TX					1
-	#define UART_RX					3
-#endif
 
 #define COMMS_TIMEOUT			200		// Timeout for VDP commands (ms)
 
@@ -62,6 +50,7 @@
 #define VDP_LOGICALCOORDS		0xC0	// Switch BBC Micro style logical coords on and off
 #define VDP_LEGACYMODES			0xC1	// Switch VDP 1.03 compatible modes on and off
 #define VDP_SWITCHBUFFER		0xC3	// Double buffering control
+#define VDP_CONSOLEMODE			0xFE	// Switch console mode on and off
 #define VDP_TERMINALMODE		0xFF	// Switch to terminal mode
 
 // And the corresponding return packets
