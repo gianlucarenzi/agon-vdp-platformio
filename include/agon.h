@@ -22,6 +22,8 @@
 #define MAX_SPRITES				256		// Maximum number of sprites
 #define MAX_BITMAPS				256		// Maximum number of bitmaps
 
+// #define VDP_USE_WDT						// Use the esp watchdog timer (experimental)
+
 #define UART_BR					1152000	// Max baud rate; previous stable value was 384000
 #define UART_NA					-1
 #define UART_TX					2
@@ -39,14 +41,20 @@
 #endif
 
 #define COMMS_TIMEOUT			200		// Timeout for VDP commands (ms)
+#define FAST_COMMS_TIMEOUT		10		// Fast timeout for VDP commands (ms)
 
 #define UART_RX_SIZE			256		// The RX buffer size
 #define UART_RX_THRESH			128		// Point at which RTS is toggled
 
 #define GPIO_ITRP				17		// VSync Interrupt Pin - for reference only
 
+#define CURSOR_PHASE			640		// Cursor blink phase (ms)
+#define CURSOR_FAST_PHASE		320		// Cursor blink phase (ms)
+
 // Commands for VDU 23, 0, n
 //
+#define VDP_CURSOR_VSTART		0x0A	// Cursor start line offset (0-15)
+#define VDP_CURSOR_VEND			0x0B	// Cursor end line offset
 #define VDP_GP					0x80	// General poll data
 #define VDP_KEYCODE				0x81	// Keyboard data
 #define VDP_CURSOR				0x82	// Cursor positions
@@ -57,11 +65,32 @@
 #define VDP_RTC					0x87	// RTC
 #define VDP_KEYSTATE			0x88	// Keyboard repeat rate and LED status
 #define VDP_MOUSE				0x89	// Mouse data
+#define VDP_CURSOR_HSTART		0x8A	// Cursor start row offset (0-15)
+#define VDP_CURSOR_HEND			0x8B	// Cursor end row offset
+#define VDP_CURSOR_MOVE			0x8C	// Cursor relative move
+#define VDP_UDG					0x90	// User defined characters
+#define VDP_UDG_RESET			0x91	// Reset UDGs
+#define VDP_MAP_CHAR_TO_BITMAP	0x92	// Map a character to a bitmap
+#define VDP_SCRCHAR_GRAPHICS	0x93	// Character read from screen at graphics coordinates
+#define VDP_READ_COLOUR			0x94	// Read colour
+#define VDP_FONT				0x95	// Font management commands
+#define VDP_AFFINE_TRANSFORM	0x96	// Set affine transform
+#define VDP_CONTROLKEYS			0x98	// Control keys on/off
+#define VDP_BUFFER_PRINT		0x9B	// Print a buffer of characters literally with no command interpretation
+#define VDP_TEXT_VIEWPORT		0x9C	// Set text viewport using current graphics coordinates
+#define VDP_GRAPHICS_VIEWPORT	0x9D	// Set graphics viewport using current graphics coordinates
+#define VDP_GRAPHICS_ORIGIN		0x9E	// Set graphics origin using current graphics coordinates
+#define VDP_SHIFT_ORIGIN		0x9F	// Move origin to new position from graphics coordinates, and viewports too
 #define VDP_BUFFERED			0xA0	// Buffered commands
 #define VDP_UPDATER				0xA1	// Update VDP
 #define VDP_LOGICALCOORDS		0xC0	// Switch BBC Micro style logical coords on and off
 #define VDP_LEGACYMODES			0xC1	// Switch VDP 1.03 compatible modes on and off
 #define VDP_SWITCHBUFFER		0xC3	// Double buffering control
+#define VDP_CONTEXT				0xC8	// Context management commands
+#define VDP_FLUSH_DRAWING_QUEUE	0xCA	// Flush the drawing queue
+#define VDP_PATTERN_LENGTH		0xF2	// Set pattern length (*FX 163,242,n)
+#define VDP_TESTFLAG_SET		0xF8	// Set a test flag
+#define VDP_TESTFLAG_CLEAR		0xF9	// Clear a test flag
 #define VDP_CONSOLEMODE			0xFE	// Switch console mode on and off
 #define VDP_TERMINALMODE		0xFF	// Switch to terminal mode
 
@@ -80,8 +109,10 @@
 #define PACKET_MOUSE			0x09	// Mouse data
 
 #define AUDIO_CHANNELS			3		// Default number of audio channels
+#define AUDIO_DEFAULT_SAMPLE_RATE	16384	// Default sample rate
 #define MAX_AUDIO_CHANNELS		32		// Maximum number of audio channels
-#define PLAY_SOUND_PRIORITY		3		// Sound driver task priority with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest
+#define AUDIO_CHANNEL_PRIORITY	3		// Sound driver task priority with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest
+#define AUDIO_CORE				0		// Core to run audio tasks on
 
 // Audio command definitions
 //
@@ -96,6 +127,10 @@
 #define AUDIO_CMD_ENABLE		8		// Enables a channel
 #define AUDIO_CMD_DISABLE		9		// Disables (destroys) a channel
 #define AUDIO_CMD_RESET			10		// Reset audio channel
+#define AUDIO_CMD_SEEK			11		// Seek to a position in a sample
+#define AUDIO_CMD_DURATION		12		// Set the duration of a channel
+#define AUDIO_CMD_SAMPLERATE	13		// Set the samplerate for channel or underlying audio system
+#define AUDIO_CMD_SET_PARAM		14		// Set a waveform parameter
 
 #define AUDIO_WAVE_DEFAULT		0		// Default waveform (Square wave)
 #define AUDIO_WAVE_SQUARE		0		// Square wave
@@ -109,33 +144,44 @@
 
 #define AUDIO_SAMPLE_LOAD		0		// Send a sample to the VDP
 #define AUDIO_SAMPLE_CLEAR		1		// Clear/delete a sample
-#define AUDIO_SAMPLE_FROM_BUFFER	2	// Load a sample from a buffer
+#define AUDIO_SAMPLE_FROM_BUFFER				2	// Load a sample from a buffer
+#define AUDIO_SAMPLE_SET_FREQUENCY				3	// Set the base frequency of a sample
+#define AUDIO_SAMPLE_BUFFER_SET_FREQUENCY		4	// Set the base frequency of a sample (using buffer ID)
+#define AUDIO_SAMPLE_SET_REPEAT_START			5	// Set the repeat start point of a sample
+#define AUDIO_SAMPLE_BUFFER_SET_REPEAT_START	6	// Set the repeat start point of a sample (using buffer ID)
+#define AUDIO_SAMPLE_SET_REPEAT_LENGTH			7	// Set the repeat length of a sample
+#define AUDIO_SAMPLE_BUFFER_SET_REPEAT_LENGTH	8	// Set the repeat length of a sample (using buffer ID)
 #define AUDIO_SAMPLE_DEBUG_INFO 0x10	// Get debug info about a sample
+
+#define AUDIO_DEFAULT_FREQUENCY	523		// Default sample frequency (C5, or C above middle C)
 
 #define AUDIO_FORMAT_8BIT_SIGNED	0	// 8-bit signed sample
 #define AUDIO_FORMAT_8BIT_UNSIGNED	1	// 8-bit unsigned sample
+#define AUDIO_FORMAT_DATA_MASK		7	// data bit mask for format
+#define AUDIO_FORMAT_WITH_RATE		8	// OR this with the format to indicate a sample rate follows
+#define AUDIO_FORMAT_TUNEABLE		16	// OR this with the format to indicate sample can be tuned (frequency adjustable)
 
-#define AUDIO_ENVELOPE_NONE		0		// No envelope
-#define AUDIO_ENVELOPE_ADSR		1		// Simple ADSR volume envelope
+#define AUDIO_ENVELOPE_NONE			0		// No envelope
+#define AUDIO_ENVELOPE_ADSR			1		// Simple ADSR volume envelope
+#define AUDIO_ENVELOPE_MULTIPHASE_ADSR		2		// Multi-phase ADSR envelope
 
 #define AUDIO_FREQUENCY_ENVELOPE_STEPPED	1		// Stepped frequency envelope
 
-#define AUDIO_FREQUENCY_REPEATS 0x01	// Repeat/loop the frequency envelope
+#define AUDIO_FREQUENCY_REPEATS		0x01	// Repeat/loop the frequency envelope
 #define AUDIO_FREQUENCY_CUMULATIVE	0x02	// Reset frequency envelope when looping
 #define AUDIO_FREQUENCY_RESTRICT	0x04	// Restrict frequency envelope to the range 0-65535
+
+#define AUDIO_PARAM_DUTY_CYCLE		0		// Square wave duty cycle
+#define AUDIO_PARAM_VOLUME			2		// Volume
+#define AUDIO_PARAM_FREQUENCY		3		// Frequency
+#define AUDIO_PARAM_16BIT			0x80	// 16-bit value
+#define AUDIO_PARAM_MASK			0x0F	// Parameter mask
 
 #define AUDIO_STATUS_ACTIVE		0x01	// Has an active waveform
 #define AUDIO_STATUS_PLAYING	0x02	// Playing a note (not in release phase)
 #define AUDIO_STATUS_INDEFINITE	0x04	// Indefinite duration sound playing
 #define AUDIO_STATUS_HAS_VOLUME_ENVELOPE	0x08	// Channel has a volume envelope set
 #define AUDIO_STATUS_HAS_FREQUENCY_ENVELOPE	0x10	// Channel has a frequency envelope set
-
-#define AUDIO_STATE_IDLE		0		// Channel is idle/silent
-#define AUDIO_STATE_PENDING		1		// Channel is pending (note will be played next loop call)
-#define AUDIO_STATE_PLAYING		2		// Channel is playing a note (passive)
-#define AUDIO_STATE_PLAY_LOOP	3		// Channel is in active note playing loop
-#define AUDIO_STATE_RELEASE		4		// Channel is releasing a note
-#define AUDIO_STATE_ABORT		5		// Channel is aborting a note
 
 // Mouse commands
 #define MOUSE_ENABLE			0		// Enable mouse
@@ -150,41 +196,95 @@
 #define MOUSE_SET_ACCERATION	9		// Set mouse acceleration (1-2000)
 #define MOUSE_SET_WHEELACC		10		// Set mouse wheel acceleration
 
-#define MOUSE_DEFAULT_CURSOR	0;		// Default mouse cursor
-#define MOUSE_DEFAULT_SAMPLERATE	60;	// Default mouse sample rate
-#define MOUSE_DEFAULT_RESOLUTION	2;	// Default mouse resolution (4 counts/mm)
-#define MOUSE_DEFAULT_SCALING	1;		// Default mouse scaling (1:1)
-#define MOUSE_DEFAULT_ACCELERATION	180;	// Default mouse acceleration 
-#define MOUSE_DEFAULT_WHEELACC		60000;	// Default mouse wheel acceleration
+#define MOUSE_DEFAULT_CURSOR		0		// Default mouse cursor
+#define MOUSE_DEFAULT_SAMPLERATE	60		// Default mouse sample rate
+#define MOUSE_DEFAULT_RESOLUTION	2		// Default mouse resolution (4 counts/mm)
+#define MOUSE_DEFAULT_SCALING		1		// Default mouse scaling (1:1)
+#define MOUSE_DEFAULT_ACCELERATION	180		// Default mouse acceleration 
+#define MOUSE_DEFAULT_WHEELACC		60000	// Default mouse wheel acceleration
+
+// Font management commands
+#define FONT_SELECT						0		// Select a font (by buffer ID, 65535 for system font)
+#define FONT_FROM_BUFFER				1		// Load/define a font from a buffer
+#define FONT_SET_INFO					2		// Set font information
+#define FONT_SET_NAME					3		// Set font name
+#define FONT_CLEAR						4		// Clear a font
+#define FONT_COPY_SYSTEM				5		// Copy system font to a buffer
+#define FONT_SELECT_BY_NAME				0x10	// Select a font by name
+#define FONT_DEBUG_INFO					0x20	// Get debug info about a font
+// Future commands may include ability to search for fonts based on their info settings
+
+#define FONT_INFO_WIDTH					0		// Font width
+#define FONT_INFO_HEIGHT				1		// Font height
+#define FONT_INFO_ASCENT				2		// Font ascent
+#define FONT_INFO_FLAGS					3		// Font flags
+#define FONT_INFO_CHARPTRS_BUFFER		4		// Font character pointers (for variable width fonts)
+#define FONT_INFO_POINTSIZE				5		// Font point size
+#define FONT_INFO_INLEADING				6		// Font inleading
+#define FONT_INFO_EXLEADING				7		// Font exleading
+#define FONT_INFO_WEIGHT				8		// Font weight
+#define FONT_INFO_CHARSET				9		// Font character set ??
+#define FONT_INFO_CODEPAGE				10		// Font code page
+
+#define FONT_SELECTFLAG_ADJUSTBASE		0x01	// Adjust font baseline, based on ascent
+
+// Context management commands
+#define CONTEXT_SELECT					0		// Select a context stack
+#define CONTEXT_DELETE					1		// Delete a context stack
+#define CONTEXT_RESET					2		// Reset current context
+#define CONTEXT_SAVE					3		// Save a context to stack
+#define CONTEXT_RESTORE					4		// Restore a context from stack
+#define CONTEXT_SAVE_AND_SELECT			5		// Save and get a copy of topmost context from numbered stack
+#define CONTEXT_RESTORE_ALL				6		// Clear stack and restore to first context in stack
+#define CONTEXT_CLEAR_STACK				7		// Clear stack, keeping current context
+
+#define CONTEXT_RESET_GPAINT			0x01	// graphics painting options
+#define CONTEXT_RESET_GPOS				0x02	// graphics positioning incl graphics viewport
+#define CONTEXT_RESET_TPAINT			0x04	// text painting options
+#define CONTEXT_RESET_TCURSOR			0x08	// text cursor incl text viewport
+#define CONTEXT_RESET_TBEHAVIOUR		0x10	// text cursor behaviour
+#define CONTEXT_RESET_FONTS				0x20	// fonts
+#define CONTEXT_RESET_CHAR2BITMAP		0x40	// char-to-bitmap mappings
+#define CONTEXT_RESET_RESERVED			0x80	// reserved for future use
 
 // Buffered commands
-#define BUFFERED_WRITE			0x00	// Write to a numbered buffer
-#define BUFFERED_CALL			0x01	// Call buffered commands
-#define BUFFERED_CLEAR			0x02	// Clear buffered commands
-#define BUFFERED_CREATE			0x03	// Create a new empty buffer
-#define BUFFERED_SET_OUTPUT		0x04	// Set the output buffer
-#define BUFFERED_ADJUST			0x05	// Adjust buffered commands
-#define BUFFERED_COND_CALL		0x06	// Conditionally call a buffer
-#define BUFFERED_JUMP			0x07	// Jump to a buffer
-#define BUFFERED_COND_JUMP		0x08	// Conditionally jump to a buffer
-#define BUFFERED_OFFSET_JUMP	0x09	// Jump to a buffer with an offset
-#define BUFFERED_OFFSET_COND_JUMP	0x0A	// Conditionally jump to a buffer with an offset
-#define BUFFERED_OFFSET_CALL	0x0B	// Call a buffer with an offset
-#define BUFFERED_OFFSET_COND_CALL	0x0C	// Conditionally call a buffer with an offset
-#define BUFFERED_COPY			0x0D	// Copy blocks from multiple buffers into one buffer
-#define BUFFERED_CONSOLIDATE	0x0E	// Consolidate blocks inside a buffer into one
-#define BUFFERED_SPLIT			0x0F	// Split a buffer into multiple blocks
-#define BUFFERED_SPLIT_INTO		0x10	// Split a buffer into multiple blocks to new buffer(s)
-#define BUFFERED_SPLIT_FROM		0x11	// Split to new buffers from a target bufferId onwards
-#define BUFFERED_SPLIT_BY		0x12	// Split a buffer into multiple blocks by width (columns)
-#define BUFFERED_SPLIT_BY_INTO	0x13	// Split by width into new buffer(s)
-#define BUFFERED_SPLIT_BY_FROM	0x14	// Split by width to new buffers from a target bufferId onwards
-#define BUFFERED_SPREAD_INTO	0x15	// Spread blocks from a buffer to multiple target buffers
-#define BUFFERED_SPREAD_FROM	0x16	// Spread blocks from target buffer ID onwards
-#define BUFFERED_REVERSE_BLOCKS	0x17	// Reverse the order of blocks in a buffer
-#define BUFFERED_REVERSE		0x18	// Reverse the order of data in a buffer
+#define BUFFERED_WRITE					0x00	// Write to a numbered buffer
+#define BUFFERED_CALL					0x01	// Call buffered commands
+#define BUFFERED_CLEAR					0x02	// Clear buffered commands
+#define BUFFERED_CREATE					0x03	// Create a new empty buffer
+#define BUFFERED_SET_OUTPUT				0x04	// Set the output buffer
+#define BUFFERED_ADJUST					0x05	// Adjust buffered commands
+#define BUFFERED_COND_CALL				0x06	// Conditionally call a buffer
+#define BUFFERED_JUMP					0x07	// Jump to a buffer
+#define BUFFERED_COND_JUMP				0x08	// Conditionally jump to a buffer
+#define BUFFERED_OFFSET_JUMP			0x09	// Jump to a buffer with an offset
+#define BUFFERED_OFFSET_COND_JUMP		0x0A	// Conditionally jump to a buffer with an offset
+#define BUFFERED_OFFSET_CALL			0x0B	// Call a buffer with an offset
+#define BUFFERED_OFFSET_COND_CALL		0x0C	// Conditionally call a buffer with an offset
+#define BUFFERED_COPY					0x0D	// Copy blocks from multiple buffers into one buffer
+#define BUFFERED_CONSOLIDATE			0x0E	// Consolidate blocks inside a buffer into one
+#define BUFFERED_SPLIT					0x0F	// Split a buffer into multiple blocks
+#define BUFFERED_SPLIT_INTO				0x10	// Split a buffer into multiple blocks to new buffer(s)
+#define BUFFERED_SPLIT_FROM				0x11	// Split to new buffers from a target bufferId onwards
+#define BUFFERED_SPLIT_BY				0x12	// Split a buffer into multiple blocks by width (columns)
+#define BUFFERED_SPLIT_BY_INTO			0x13	// Split by width into new buffer(s)
+#define BUFFERED_SPLIT_BY_FROM			0x14	// Split by width to new buffers from a target bufferId onwards
+#define BUFFERED_SPREAD_INTO			0x15	// Spread blocks from a buffer to multiple target buffers
+#define BUFFERED_SPREAD_FROM			0x16	// Spread blocks from target buffer ID onwards
+#define BUFFERED_REVERSE_BLOCKS			0x17	// Reverse the order of blocks in a buffer
+#define BUFFERED_REVERSE				0x18	// Reverse the order of data in a buffer
+#define BUFFERED_COPY_REF				0x19	// Copy references to blocks from multiple buffers into one buffer
+#define BUFFERED_COPY_AND_CONSOLIDATE	0x1A	// Copy blocks from multiple buffers into one buffer and consolidate them
+#define BUFFERED_AFFINE_TRANSFORM		0x20	// Create or combine a 3x3 2d affine transform matrix buffer
+#define BUFFERED_AFFINE_TRANSFORM_3D	0x21	// Create or combine a 4x4 3d affine transform matrix buffer
+#define BUFFERED_MATRIX					0x22	// Create or combine a matrix buffer of arbitrary dimensions
+#define BUFFERED_TRANSFORM_BITMAP		0x28	// Create a new bitmap from an existing one by applying a 2d transform
+#define BUFFERED_TRANSFORM_DATA			0x29	// Transform data using a given matrix
+#define BUFFERED_COMPRESS				0x40	// Compress blocks from multiple buffers into one buffer
+#define BUFFERED_DECOMPRESS				0x41	// Decompress blocks from multiple buffers into one buffer
+#define BUFFERED_EXPAND_BITMAP			0x48	// Expand a bitmap buffer
 
-#define BUFFERED_DEBUG_INFO		0x20	// Get debug info about a buffer
+#define BUFFERED_DEBUG_INFO				0x80	// Get debug info about a buffer
 
 // Adjust operation codes
 #define ADJUST_NOT				0x00	// Adjust: NOT
@@ -228,28 +328,103 @@
 #define REVERSE_BLOCK			0x08	// reverse block order
 #define REVERSE_UNUSED_BITS		0xF0	// unused bits
 
+// Expand bitmap operation flags
+#define EXPAND_BITMAP_SIZE		0x07	// bottom bits indicate the number of bits per pixel in bitmap, 0=8bpp
+#define EXPAND_BITMAP_ALIGNED	0x08	// includes pixel width value to indicate where a byte alignment should be performed
+#define EXPAND_BITMAP_USEBUFFER	0x10	// use buffer ID for mapping data
+
+// Affine transform operation codes
+// if applying to an empty buffer, generate a matrix with the given operation
+// otherwise combine the existing matrix with the given operation
+#define AFFINE_IDENTITY			0		// Create/reset to an identity matrix (no arguments)
+#define AFFINE_INVERT			1		// Invert (no arguments)
+#define AFFINE_ROTATE			2		// Rotate (anticlockwise by angle, 1 argument for 2d, 3 arguments for 3d)
+#define AFFINE_ROTATE_RAD		3		// Rotate (anticlockwise by angle in radians, 1 argument for 2d, 3 arguments for 3d)
+#define AFFINE_MULTIPLY			4		// Scalar multiply (1 argument)
+#define AFFINE_SCALE			5		// Scale (1 argument per dimension for X, Y and Z)
+#define AFFINE_TRANSLATE		6		// Translate (1 argument per dimension)
+#define AFFINE_TRANSLATE_OS_COORDS		7		// Translate (1 argument per dimension, X and Y in OS coordinates, Z un-scaled)
+#define AFFINE_SHEAR			8		// Shear (1 argument per dimension)
+#define AFFINE_SKEW				9		// Skew (by angle, 1 argument per dimension)
+#define AFFINE_SKEW_RAD			10		// Skew (by angle in radians, 1 argument per dimension)
+#define AFFINE_TRANSFORM		11		// Combine in a transform matrix (6 arguments for 2d, 12 for 3d, last row automatically identity value, or a buffer)
+#define AFFINE_TRANSLATE_BITMAP	12		// Translate using bitmap size multiplier (X and Y only)
+
+#define AFFINE_OP_MASK			0x0F	// operation code mask
+#define AFFINE_OP_ADVANCED_OFFSETS	0x10	// advanced, 24-bit offsets (16-bit block offset follows if top bit set)
+#define AFFINE_OP_BUFFER_VALUE		0x20	// operand values are fetched from buffers
+#define AFFINE_OP_MULTI_FORMAT		0x40	// each argument has its own format byte
+
+// Floating point value format byte
+// a format of 0 would indicate a 32-bit float value - "native" for transform matrix data
+// using a value of 0xC8 would indicate a 16-bit fixed point value with the binary point shifted left 8 bits (for an 8/8 split)
+// a value of 0xC0 indicates 16-bit fixed point values with no fractional part
+#define FLOAT_FORMAT_SHIFT_MASK	0x1F	// bits used for shift value (used for fixed point values)
+#define FLOAT_FORMAT_SHIFT_TOPBIT	0x10	// top bit of shift (used to work out if shift is negative)
+#define FLOAT_FORMAT_FLAGS		0xE0	// flags
+#define FLOAT_FORMAT_FIXED		0x40	// if set, values are fixed-point, vs floats
+#define FLOAT_FORMAT_16BIT		0x80	// if set, values are 16-bit, vs 32-bit
+
+// Matrix operations
+#define MATRIX_SET				0		// Set a new matrix with given values
+#define MATRIX_SET_VALUE		1		// New matrix with single value set at row/column
+#define MATRIX_FILL				2		// Fill a matrix with a given value
+#define MATRIX_DIAGONAL			3		// Diagonal matrix from input values
+#define MATRIX_ADD				4		// Add matrixes (target = source1 + source2)
+#define MATRIX_SUBTRACT			5		// Subtract (target = source1 - source2)
+#define MATRIX_MULTIPLY			6		// Multiply (target = source1 * source2)
+#define MATRIX_SCALAR_MULTIPLY	7		// Scalar multiply (target = source1 * scalar)
+#define MATRIX_SUBMATRIX		8		// Extract a submatrix
+#define MATRIX_INSERT_ROW		9		// Insert a row
+#define MATRIX_INSERT_COLUMN	10		// Insert a column
+#define MATRIX_DELETE_ROW		11		// Delete a row
+#define MATRIX_DELETE_COLUMN	12		// Delete a column
+
+#define MATRIX_OP_MASK			0x0F	// operation code mask
+#define MATRIX_OP_ADVANCED_OFFSETS	0x10	// advanced, 24-bit offsets (16-bit block offset follows if top bit set)
+#define MATRIX_OP_BUFFER_VALUE	0x20	// operand values are fetched from buffers
+
+// Transform bitmap flags
+#define TRANSFORM_BITMAP_RESIZE		0x01	// Resize
+#define TRANSFORM_BITMAP_EXPLICIT_SIZE	0x02	// Use an explicit size (width and height)
+#define TRANSFORM_BITMAP_TRANSLATE	0x04	// Translate
+
+// Transform data flags
+#define TRANSFORM_DATA_HAS_SIZE		0x01	// Explicit size set (otherwise size = rows - 1)
+#define TRANSFORM_DATA_HAS_OFFSET	0x02	// Has an offset to the data
+#define TRANSFORM_DATA_HAS_STRIDE	0x04	// Has an explicit stride (in bytes) between value sets
+#define TRANSFORM_DATA_HAS_LIMIT	0x08	// Has a limited number of data items transformed
+#define TRANSFORM_DATA_ADVANCED		0x10	// Advanced offsets
+#define TRANSFORM_DATA_BUFFER_ARGS	0x20	// Optional argument values are fetched from buffers
+#define TRANSFORM_DATA_PER_BLOCK	0x40	// Transform data per block
+
 // Buffered bitmap and sample info
 #define BUFFERED_BITMAP_BASEID	0xFA00	// Base ID for buffered bitmaps
 #define BUFFERED_SAMPLE_BASEID	0xFB00	// Base ID for buffered samples
 
-// Viewport definitions
-#define VIEWPORT_TEXT			0		// Text viewport
-#define VIEWPORT_DEFAULT		1		// Default (whole screen) viewport
-#define VIEWPORT_GRAPHICS		2		// Graphics viewport
-#define VIEWPORT_ACTIVE			3		// Active viewport
+// Test flags
+#define TEST_FLAG_AFFINE_TRANSFORM	1	// Affine transform test flag
 
 #define LOGICAL_SCRW			1280	// As per the BBC Micro standard
 #define LOGICAL_SCRH			1024
 
-#if CONFIG_FREERTOS_UNICORE
-#define ARDUINO_RUNNING_CORE	0
-#else
-#define ARDUINO_RUNNING_CORE	1
-#endif
-
 // Function Prototypes
 //
 void debug_log(const char *format, ...);
+
+void force_debug_log(const char *format, ...);
+
+// Terminal states
+//
+enum class TerminalState {
+	Disabled,
+	Disabling,
+	Enabling,
+	Enabled,
+	Suspending,
+	Suspended,
+	Resuming
+};
 
 // Additional modelines
 //

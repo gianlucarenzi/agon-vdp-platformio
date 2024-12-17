@@ -10,22 +10,27 @@
 
 class MultiBufferStream : public Stream {
 	public:
-		MultiBufferStream(std::vector<std::shared_ptr<BufferStream>> buffers);
+		MultiBufferStream(BufferVector buffers);
 		int available();
 		int read();
 		int peek();
+		virtual size_t readBytes(char * outBuffer, size_t length); // read chars from stream into buffer
+		virtual size_t readBytes(uint8_t * outBuffer, size_t length) {
+			return readBytes((char *)outBuffer, length);
+		}
 		size_t write(uint8_t b);
-		void rewind();
-		void seekTo(uint32_t position);
+		void rewind(size_t bufferIndex = 0);
+		void seekTo(uint32_t position, size_t bufferIndex = 0);
 		uint32_t size();
+		const BufferVector &tellBuffer(uint32_t &blockOffset, size_t &blockIndex);
 	private:
-		std::vector<std::shared_ptr<BufferStream>> buffers;
-		std::shared_ptr<BufferStream> getBuffer();
+		BufferVector buffers;
+		BufferStream * getBuffer();
 		size_t currentBufferIndex = 0;
 };
 
-MultiBufferStream::MultiBufferStream(std::vector<std::shared_ptr<BufferStream>> buffers) : buffers(buffers) {
-	// rewind all buffers, in case they've been used before
+MultiBufferStream::MultiBufferStream(BufferVector buffers) : buffers(std::move(buffers)) {
+	// rewind to the start of the first buffer
 	rewind();
 }
 
@@ -39,12 +44,30 @@ int MultiBufferStream::available() {
 
 int MultiBufferStream::read() {
 	auto buffer = getBuffer();
-	return buffer->read();
+	if (buffer) {
+		return buffer->read();
+	}
+	return -1;
 }
 
 int MultiBufferStream::peek() {
 	auto buffer = getBuffer();
-	return buffer->peek();
+	if (buffer) {
+		return buffer->peek();
+	}
+	return -1;
+}
+
+size_t MultiBufferStream::readBytes(char * outBuffer, size_t length) {
+	size_t readAmount = 0;
+	while (readAmount < length) {
+		auto buffer = getBuffer();
+		if (!buffer) {
+			break;
+		}
+		readAmount += buffer->readBytes(outBuffer + readAmount, length - readAmount);
+	}
+	return readAmount;
 }
 
 size_t MultiBufferStream::write(uint8_t b) {
@@ -52,21 +75,19 @@ size_t MultiBufferStream::write(uint8_t b) {
 	return 0;
 }
 
-void MultiBufferStream::rewind() {
-	for (auto buffer : buffers) {
-		buffer->rewind();
+void MultiBufferStream::rewind(size_t bufferIndex) {
+	currentBufferIndex = bufferIndex;
+	if (currentBufferIndex < buffers.size()) {
+		buffers[currentBufferIndex]->rewind();
 	}
-	currentBufferIndex = 0;
 }
 
-void MultiBufferStream::seekTo(uint32_t position) {
-	// reset all our positions
-	rewind();
+void MultiBufferStream::seekTo(uint32_t position, size_t bufferIndex) {
 	// find the buffer that contains the position we want
 	// keeping track of an offset into the whole buffer
 	auto offset = position;
-	for (auto i = 0; i < buffers.size(); i++) {
-		auto stream = buffers[i];
+	for (auto i = bufferIndex; i < buffers.size(); i++) {
+		auto &stream = buffers[i];
 		auto bufferSize = stream->size();
 		if (offset < bufferSize) {
 			// this is the buffer we want
@@ -79,27 +100,33 @@ void MultiBufferStream::seekTo(uint32_t position) {
 	}
 
 	// if we get here, we've gone past the end of the buffers
-	// so just seek to the end of the last buffer
-	currentBufferIndex = buffers.size() - 1;
-	buffers[currentBufferIndex]->seekTo(buffers[currentBufferIndex]->size());
+	// so just seek past the end of the last buffer
+	currentBufferIndex = buffers.size();
 }
 
 uint32_t MultiBufferStream::size() {
 	uint32_t totalSize = 0;
-	for (auto buffer : buffers) {
+	for (auto &buffer : buffers) {
 		totalSize += buffer->size();
 	}
 	return totalSize;
 }
 
-inline std::shared_ptr<BufferStream> MultiBufferStream::getBuffer() {
+const BufferVector &MultiBufferStream::tellBuffer(uint32_t &blockOffset, size_t &blockIndex) {
+	auto buffer = getBuffer();
+	blockOffset = buffer ? buffer->tell() : 0;
+	blockIndex = currentBufferIndex;
+	return buffers;
+}
+
+inline BufferStream * MultiBufferStream::getBuffer() {
 	while (currentBufferIndex < buffers.size() && !buffers[currentBufferIndex]->available()) {
-		currentBufferIndex++;
+		rewind(currentBufferIndex + 1);
 	}
 	if (currentBufferIndex >= buffers.size()) {
 		return nullptr;
 	}
-	return buffers[currentBufferIndex];
+	return buffers[currentBufferIndex].get();
 }
 
 #endif // MULTI_BUFFER_STREAM_H

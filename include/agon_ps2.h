@@ -2,12 +2,12 @@
 #define AGON_PS2_H
 
 #include <vector>
+#include <algorithm>
 
 #include <fabgl.h>
 
 #include "agon.h"
-
-fabgl::PS2Controller		_PS2Controller;		// The keyboard class
+#include "agon_screen.h"
 
 uint8_t			_keycode = 0;					// Last pressed key code
 uint8_t			_modifiers = 0;					// Last pressed key modifiers
@@ -23,30 +23,35 @@ uint32_t		mWheelAcc = MOUSE_DEFAULT_WHEELACC;	// Mouse wheel acceleration
 
 // Forward declarations
 //
-bool zdi_mode ();
-void zdi_enter ();
-void zdi_process_cmd (uint8_t key);
+bool resetMousePositioner(uint16_t width, uint16_t height, fabgl::VGABaseController * display);
+
+extern bool zdi_mode();
+extern void zdi_enter();
+extern void zdi_process_cmd(uint8_t key);
+extern bool consoleMode;
+extern HardwareSerial DBGSerial;
 
 // Get keyboard instance
 //
 inline fabgl::Keyboard* getKeyboard() {
-	return _PS2Controller.keyboard();
+	return fabgl::PS2Controller::keyboard();
 }
 
 // Get mouse instance
 //
 inline fabgl::Mouse* getMouse() {
-	return _PS2Controller.mouse();
+	return fabgl::PS2Controller::mouse();
 }
 
 // Keyboard and mouse setup
 //
 void setupKeyboardAndMouse() {
-	_PS2Controller.begin();
+	fabgl::PS2Controller::begin();
 	auto kb = getKeyboard();
 	kb->setLayout(&fabgl::UKLayout);
 	kb->setCodePage(fabgl::CodePages::get(1252));
 	kb->setTypematicRateAndDelay(kbRepeatRate, kbRepeatDelay);
+	resetMousePositioner(canvasW, canvasH, _VGAController.get());
 }
 
 // Set keyboard layout
@@ -68,7 +73,9 @@ void setKeyboardLayout(uint8_t region) {
 		case 12: kb->setLayout(&fabgl::SwissFLayout); break;
 		case 13: kb->setLayout(&fabgl::DanishLayout); break;
 		case 14: kb->setLayout(&fabgl::SwedishLayout); break;
-		case 15: kb->setLayout(&fabgl::PortugueseLayout); break;		
+		case 15: kb->setLayout(&fabgl::PortugueseLayout); break;
+		case 16: kb->setLayout(&fabgl::BrazilianPortugueseLayout); break;
+		case 17: kb->setLayout(&fabgl::DvorakLayout); break;
 		default:
 			kb->setLayout(&fabgl::UKLayout);
 			break;
@@ -82,7 +89,7 @@ bool getKeyboardKey(uint8_t *keycode, uint8_t *modifiers, uint8_t *vk, uint8_t *
 	auto kb = getKeyboard();
 	fabgl::VirtualKeyItem item;
 
-	if(consoleMode) {
+	if (consoleMode) {
 		if (DBGSerial.available()) {
 			_keycode = DBGSerial.read();			
 			if(!zdi_mode()) {

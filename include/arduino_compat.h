@@ -5,12 +5,17 @@
 
 void setup();
 void loop();
+void processLoop(void * parameter);
 void do_keyboard();
 void do_keyboard_terminal();
 void do_mouse();
 void boot_screen();
 void debug_log(const char *format, ...);
+void force_debug_log(const char *format, ...);
 void setConsoleMode(bool mode);
-void switchTerminalMode();
+void startTerminal();
+void stopTerminal();
+void suspendTerminal();
+bool processTerminal();
 void print(char const * text);
 void printFmt(const char *format, ...);

@@ -12,43 +12,30 @@
 #include "agon.h"
 #include "agon_ps2.h"
 #include "agon_screen.h"
+#include "types.h"
 
-uint16_t		currentBitmap = BUFFERED_BITMAP_BASEID;	// Current bitmap ID
-std::unordered_map<uint16_t, std::shared_ptr<Bitmap>> bitmaps;	// Storage for our bitmaps
+std::unordered_map<uint16_t, std::shared_ptr<Bitmap>,
+	std::hash<uint16_t>, std::equal_to<uint16_t>,
+	psram_allocator<std::pair<const uint16_t, std::shared_ptr<Bitmap>>>> bitmaps;	// Storage for our bitmaps
 uint8_t			numsprites = 0;					// Number of sprites on stage
 uint8_t			current_sprite = 0;				// Current sprite number
 Sprite			sprites[MAX_SPRITES];			// Sprite object storage
 
 // track which sprites may be using a bitmap
-std::unordered_map<uint16_t, std::vector<uint8_t>> bitmapUsers;
+std::unordered_map<uint16_t, std::vector<uint8_t, psram_allocator<uint8_t>>> bitmapUsers;
 
 std::unordered_map<uint16_t, fabgl::Cursor> cursors;	// Storage for our cursors
 uint16_t		mCursor = MOUSE_DEFAULT_CURSOR;	// Mouse cursor
 
-std::shared_ptr<Bitmap> getBitmap(uint16_t id = currentBitmap) {
+
+std::shared_ptr<Bitmap> getBitmap(uint16_t id) {
 	if (bitmaps.find(id) != bitmaps.end()) {
 		return bitmaps[id];
 	}
 	return nullptr;
 }
 
-inline void setCurrentBitmap(uint16_t b) {
-	currentBitmap = b;
-}
-
-inline uint16_t getCurrentBitmapId() {
-	return currentBitmap;
-}
-
-void drawBitmap(uint16_t x, uint16_t y) {
-	auto bitmap = getBitmap();
-	if (bitmap) {
-		canvas->drawBitmap(x, y, bitmap.get());
-	} else {
-		debug_log("drawBitmap: bitmap %d not found\n\r", currentBitmap);
-	}
-}
-
+// TODO remove this??  it doesn't seem to be used
 void clearCursor(uint16_t cursor) {
 	if (cursors.find(cursor) != cursors.end()) {
 		cursors.erase(cursor);
@@ -97,16 +84,13 @@ bool setMouseCursor(uint16_t cursor = mCursor) {
 }
 
 void resetBitmaps() {
-	// if we're using a bitmap as a cursor then the cursor needs to change too
-	if (cursors.find(currentBitmap) != cursors.end()) {
-		uint16_t cursor = MOUSE_DEFAULT_CURSOR;
-		setMouseCursor(cursor);
-	}
 	bitmaps.clear();
 	// this will only be used after resetting sprites, so we can clear the bitmapUsers list
 	bitmapUsers.clear();
 	cursors.clear();
-	setCurrentBitmap(BUFFERED_BITMAP_BASEID);
+	if (!setMouseCursor()) {
+		setMouseCursor(MOUSE_DEFAULT_CURSOR);
+	}
 }
 
 Sprite * getSprite(uint8_t sprite = current_sprite) {
@@ -138,11 +122,12 @@ void clearSpriteFrames(uint8_t s = current_sprite) {
 	}
 }
 
-void clearBitmap(uint16_t b = currentBitmap) {
+void clearBitmap(uint16_t b) {
 	if (bitmaps.find(b) == bitmaps.end()) {
 		return;
 	}
 	bitmaps.erase(b);
+
 	// find all sprites that had used this bitmap and clear their frames
 	if (bitmapUsers.find(b) != bitmapUsers.end()) {
 		auto users = bitmapUsers[b];
@@ -170,13 +155,15 @@ void activateSprites(uint8_t n) {
 	* Sprites 0-(numsprites-1) will be activated on-screen
 	* Make sure all sprites have at least one frame attached to them
 	*/
-	numsprites = n;
+	if (numsprites != n) {
+		numsprites = n;
 
-	waitPlotCompletion();
-	if (numsprites) {
-		_VGAController->setSprites(sprites, numsprites);
-	} else {
-		_VGAController->removeSprites();
+		waitPlotCompletion();
+		if (numsprites) {
+			_VGAController->setSprites(sprites, numsprites);
+		} else {
+			_VGAController->removeSprites();
+		}
 	}
 }
 
@@ -250,6 +237,13 @@ void resetSprites() {
 	// for (auto n = 0; n < MAX_SPRITES; n++) {
 	// 	sprites[n] = Sprite();
 	// }
+}
+
+void setSpritePaintMode(uint8_t mode) {
+	auto sprite = getSprite();
+	if (mode <= 7) {
+		sprite->paintOptions.mode = static_cast<fabgl::PaintMode>(mode);
+	}
 }
 
 #endif // SPRITES_H

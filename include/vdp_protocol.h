@@ -28,6 +28,7 @@ void setupVDPProtocol() {
 #ifndef VDP_RETROBIT_LAB
 	VDPSerial.setHwFlowCtrlMode(HW_FLOWCTRL_RTS, 64);			// Can be called whenever
 	VDPSerial.setPins(UART_NA, UART_NA, UART_CTS, UART_RTS);	// Must be called after begin
+	VDPSerial.setTimeout(COMMS_TIMEOUT);
 #endif
 }
 
