@@ -78,6 +78,17 @@ VDUStreamProcessor *	processor;				// VDU Stream Processor
 
 TaskHandle_t		Core0Task;					// Core 0 task handle
 
+// Module's function declaration
+void processLoop(void *parameter);
+void do_keyboard(void);
+void do_keyboard_terminal(void);
+void do_mouse(void);
+void boot_screen(void);
+void stopTerminal(void);
+void suspendTerminal(void);
+bool processTerminal(void);
+
+
 void setup() {
 	#ifndef VDP_USE_WDT
 		disableCore0WDT(); delay(200);				// Disable the watchdog timers
